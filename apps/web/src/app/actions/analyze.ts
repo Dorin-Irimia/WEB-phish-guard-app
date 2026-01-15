@@ -3,6 +3,7 @@
 import { auth } from "@phish-guard-app/auth";
 import prisma from "@phish-guard-app/db";
 import { headers } from "next/headers";
+import { requireAuth } from "@/lib/auth-helpers";
 
 type AnalyzeInput = {
   url?: string;
@@ -188,13 +189,7 @@ function calculateRiskLevel(score: number): "safe" | "low" | "medium" | "high" |
 }
 
 export async function analyzePhishing(input: AnalyzeInput): Promise<AnalysisResult> {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
-
-  if (!session?.user) {
-    throw new Error("Unauthorized");
-  }
+  const session = await requireAuth();
 
   let urlScore = 0;
   let textScore = 0;

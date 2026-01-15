@@ -22,6 +22,11 @@ model Scan {
   detectedThreats String[] @default([])
   analysis        String?  @db.Text
   
+  // Admin actions
+  isDeleted    Boolean  @default(false)
+  deletedAt    DateTime?
+  deletedBy    String?
+  
   // Metadata
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -29,6 +34,7 @@ model Scan {
   @@index([userId])
   @@index([createdAt])
   @@index([riskLevel])
+  @@index([isDeleted])
   @@map("scan")
 }
 

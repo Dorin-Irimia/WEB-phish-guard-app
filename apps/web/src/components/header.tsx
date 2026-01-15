@@ -5,12 +5,16 @@ import { Shield } from "lucide-react";
 import { ModeToggle } from "./mode-toggle";
 import UserMenu from "./user-menu";
 import { Button } from "./ui/button";
+import { authClient } from "@/lib/auth-client";
 
 export default function Header() {
+  const { data: session } = authClient.useSession();
+  
   const links = [
     { to: "/", label: "Home" },
     { to: "/dashboard", label: "Dashboard" },
     { to: "/analyze", label: "Analyze" },
+    { to: "/scans", label: "My Scans" },
   ] as const;
 
   return (
@@ -29,6 +33,13 @@ export default function Header() {
                 </Link>
               );
             })}
+            {session?.user?.role === "admin" && (
+              <Link href="/admin">
+                <Button variant="ghost" size="sm" className="text-yellow-600">
+                  👑 Admin
+                </Button>
+              </Link>
+            )}
           </nav>
         </div>
         <div className="flex items-center gap-2">
