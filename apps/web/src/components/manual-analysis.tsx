@@ -1,13 +1,14 @@
 "use client";
 
-import { useState } from "react";
-import { Send, Link as LinkIcon, FileText, AlertTriangle, CheckCircle, XCircle } from "lucide-react";
+import { useState, useRef } from "react";
+import { Send, Link as LinkIcon, FileText, AlertTriangle, CheckCircle, XCircle, Upload, Image as ImageIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { analyzePhishing } from "@/app/actions/analyze";
+import { uploadScanImage } from "@/app/actions/upload";
 
 type AnalysisResult = {
   textScore: number;
@@ -21,11 +22,44 @@ type AnalysisResult = {
 };
 
 export default function ManualAnalysis() {
-  const [activeTab, setActiveTab] = useState<"url" | "text">("url");
+  const [activeTab, setActiveTab] = useState<"url" | "text" | "image">("url");
   const [url, setUrl] = useState("");
   const [textContent, setTextContent] = useState("");
+  const [imageUrl, setImageUrl] = useState("");
   const [analyzing, setAnalyzing] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState<AnalysisResult | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please select an image file");
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("Image must be less than 10MB");
+      return;
+    }
+
+    setUploading(true);
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const result = await uploadScanImage(formData);
+      setImageUrl(result.imageUrl);
+      toast.success("Image uploaded successfully");
+    } catch (error: any) {
+      toast.error(error.message || "Failed to upload image");
+      console.error(error);
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const handleAnalyze = async () => {
     if (activeTab === "url" && !url.trim()) {
@@ -36,6 +70,10 @@ export default function ManualAnalysis() {
       toast.error("Please enter some text");
       return;
     }
+    if (activeTab === "image" && !imageUrl) {
+      toast.error("Please upload an image first");
+      return;
+    }
 
     setAnalyzing(true);
     setResult(null);
@@ -44,6 +82,7 @@ export default function ManualAnalysis() {
       const data = await analyzePhishing({
         url: activeTab === "url" ? url : undefined,
         textContent: activeTab === "text" ? textContent : undefined,
+        imageUrl: activeTab === "image" ? imageUrl : undefined,
       });
 
       setResult(data);
@@ -106,16 +145,28 @@ export default function ManualAnalysis() {
           <FileText className="w-4 h-4" />
           Text Analysis
         </Button>
+        <Button
+          variant={activeTab === "image" ? "default" : "outline"}
+          onClick={() => setActiveTab("image")}
+          className="flex items-center gap-2"
+        >
+          <ImageIcon className="w-4 h-4" />
+          Image Analysis
+        </Button>
       </div>
 
       {/* Input Section */}
       <Card className="mb-6">
         <CardHeader>
-          <CardTitle>{activeTab === "url" ? "Enter URL" : "Enter Text Content"}</CardTitle>
+          <CardTitle>
+            {activeTab === "url" && "Enter URL"}
+            {activeTab === "text" && "Enter Text Content"}
+            {activeTab === "image" && "Upload Image"}
+          </CardTitle>
           <CardDescription>
-            {activeTab === "url"
-              ? "Enter a website URL to check for phishing indicators"
-              : "Paste email content or message text to analyze"}
+            {activeTab === "url" && "Enter a website URL to check for phishing indicators"}
+            {activeTab === "text" && "Paste email content or message text to analyze"}
+            {activeTab === "image" && "Upload a screenshot of suspicious email or message"}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -142,7 +193,7 @@ export default function ManualAnalysis() {
                 </Button>
               </div>
             </div>
-          ) : (
+          ) : activeTab === "text" ? (
             <div className="space-y-2">
               <Label htmlFor="text">Text Content</Label>
               <textarea
@@ -162,6 +213,56 @@ export default function ManualAnalysis() {
                   </>
                 )}
               </Button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex items-center gap-4">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageUpload}
+                  className="hidden"
+                />
+                <Button
+                  variant="outline"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                  className="flex-1"
+                >
+                  {uploading ? (
+                    <>Uploading...</>
+                  ) : (
+                    <>
+                      <Upload className="w-4 h-4 mr-2" />
+                      Choose Image
+                    </>
+                  )}
+                </Button>
+              </div>
+
+              {imageUrl && (
+                <div className="space-y-2">
+                  <Label>Preview</Label>
+                  <div className="relative rounded-lg border overflow-hidden">
+                    <img
+                      src={imageUrl}
+                      alt="Uploaded scan"
+                      className="w-full h-auto"
+                    />
+                  </div>
+                  <Button onClick={handleAnalyze} disabled={analyzing} className="w-full">
+                    {analyzing ? (
+                      <>Analyzing...</>
+                    ) : (
+                      <>
+                        <Send className="w-4 h-4 mr-2" />
+                        Analyze Image
+                      </>
+                    )}
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </CardContent>

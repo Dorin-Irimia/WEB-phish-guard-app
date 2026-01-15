@@ -15,6 +15,7 @@ export default function Header() {
     { to: "/dashboard", label: "Dashboard" },
     { to: "/analyze", label: "Analyze" },
     { to: "/scans", label: "My Scans" },
+    { to: "/settings", label: "Settings" },
   ] as const;
 
   return (

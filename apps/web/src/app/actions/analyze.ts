@@ -8,6 +8,7 @@ import { requireAuth } from "@/lib/auth-helpers";
 type AnalyzeInput = {
   url?: string;
   textContent?: string;
+  imageUrl?: string;
 };
 
 type AnalysisResult = {
@@ -219,7 +220,7 @@ export async function analyzePhishing(input: AnalyzeInput): Promise<AnalysisResu
   const confidence = Math.min(0.6 + (allThreats.length * 0.05), 0.95);
 
   const analysis = isPhishing
-    ? `This ${input.url ? "URL" : "content"} shows ${allThreats.length} suspicious indicators commonly associated with phishing attempts. Exercise caution and verify the source before proceeding.`
+    ? `This ${input.url ? "URL" : input.imageUrl ? "image" : "content"} shows ${allThreats.length} suspicious indicators commonly associated with phishing attempts. Exercise caution and verify the source before proceeding.`
     : `No significant threats detected. However, always verify the sender's identity and be cautious with personal information.`;
 
   // Save to database
@@ -228,6 +229,7 @@ export async function analyzePhishing(input: AnalyzeInput): Promise<AnalysisResu
       userId: session.user.id,
       url: input.url,
       textContent: input.textContent,
+      imageUrl: input.imageUrl,
       textScore,
       urlScore,
       overallScore,

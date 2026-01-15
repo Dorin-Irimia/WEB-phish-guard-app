@@ -33,6 +33,27 @@ This project uses PostgreSQL with Prisma.
 bun run db:push
 ```
 
+## Cloudinary Setup (for file uploads)
+
+This project uses Cloudinary for storing user avatars and scan images.
+
+1. Sign up for a free account at [https://cloudinary.com/](https://cloudinary.com/)
+2. Go to your Cloudinary Dashboard at [https://console.cloudinary.com/](https://console.cloudinary.com/)
+3. Copy your Cloud Name, API Key, and API Secret
+4. Create a `.env.local` file in `apps/web/` (or copy from `.env.local.example`)
+5. Add your Cloudinary credentials:
+
+```env
+CLOUDINARY_CLOUD_NAME=your_cloud_name_here
+CLOUDINARY_API_KEY=your_api_key_here
+CLOUDINARY_API_SECRET=your_api_secret_here
+```
+
+The free tier includes:
+- 25 GB storage
+- 25 GB monthly bandwidth
+- Perfect for development and small production apps
+
 Then, run the development server:
 
 ```bash
