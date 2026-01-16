@@ -36,8 +36,9 @@ export default function Header() {
             })}
             {session?.user?.role === "admin" && (
               <Link href="/admin">
-                <Button variant="ghost" size="sm" className="text-yellow-600">
-                  👑 Admin
+                <Button variant="ghost" size="sm" className="text-yellow-600 font-semibold">
+                  <Shield className="w-4 h-4 mr-1" />
+                  Admin
                 </Button>
               </Link>
             )}

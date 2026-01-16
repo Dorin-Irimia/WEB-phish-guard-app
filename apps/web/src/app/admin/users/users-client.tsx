@@ -1,40 +1,43 @@
 "use client";
 
 import { useState } from "react";
-import { Shield, User as UserIcon, Crown, Building2 } from "lucide-react";
+import Link from "next/link";
+import { Shield, User as UserIcon, Crown, Trash2, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { updateUserRole } from "@/app/actions/scans";
-import { assignUserToOrganization, removeUserFromOrganization } from "@/app/actions/organizations";
+import { updateUserRole, deleteUser } from "@/app/actions/scans";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 type UserData = {
   id: string;
   name: string;
   email: string;
   role: string;
-  organizationId?: string | null;
   createdAt: Date;
   _count: {
     scans: number;
   };
 };
 
-type OrganizationData = {
-  id: string;
-  name: string;
-};
-
 export default function AdminUsersClient({ 
-  users: initialUsers, 
-  organizations 
+  users: initialUsers
 }: { 
-  users: UserData[]; 
-  organizations: OrganizationData[];
+  users: UserData[];
 }) {
   const [users, setUsers] = useState(initialUsers);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
-  const [showOrgSelect, setShowOrgSelect] = useState<string | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<UserData | null>(null);
 
   const handleRoleChange = async (userId: string, newRole: "user" | "admin") => {
     setUpdatingId(userId);
@@ -44,41 +47,31 @@ export default function AdminUsersClient({
         users.map((u) => (u.id === userId ? { ...u, role: newRole } : u))
       );
       toast.success(`User role updated to ${newRole}`);
-    } catch (error) {
-      toast.error("Failed to update role");
-      console.error(error);
-    } finally {
-      setUpdatingId(null);
-    }
-  };
-
-  const handleAssignOrg = async (userId: string, orgId: string) => {
-    setUpdatingId(userId);
-    try {
-      await assignUserToOrganization(userId, orgId);
-      setUsers(
-        users.map((u) => (u.id === userId ? { ...u, organizationId: orgId } : u))
-      );
-      toast.success("User assigned to organization");
-      setShowOrgSelect(null);
     } catch (error: any) {
-      toast.error(error.message || "Failed to assign user");
+      toast.error(error.message || "Failed to update role");
       console.error(error);
     } finally {
       setUpdatingId(null);
     }
   };
 
-  const handleRemoveOrg = async (userId: string) => {
-    setUpdatingId(userId);
+  const handleDeleteClick = (user: UserData) => {
+    setUserToDelete(user);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!userToDelete) return;
+
+    setUpdatingId(userToDelete.id);
     try {
-      await removeUserFromOrganization(userId);
-      setUsers(
-        users.map((u) => (u.id === userId ? { ...u, organizationId: null } : u))
-      );
-      toast.success("User removed from organization");
-    } catch (error) {
-      toast.error("Failed to remove user");
+      const result = await deleteUser(userToDelete.id);
+      setUsers(users.filter((u) => u.id !== userToDelete.id));
+      toast.success(result.message || "User deleted successfully");
+      setDeleteDialogOpen(false);
+      setUserToDelete(null);
+    } catch (error: any) {
+      toast.error(error.message || "Failed to delete user");
       console.error(error);
     } finally {
       setUpdatingId(null);
@@ -87,11 +80,19 @@ export default function AdminUsersClient({
 
   return (
     <div className="container mx-auto max-w-6xl px-4 py-8">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold mb-2">Manage Users</h1>
-        <p className="text-muted-foreground">
-          View and manage user accounts and roles
-        </p>
+      <div className="mb-8 flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold mb-2">Manage Users</h1>
+          <p className="text-muted-foreground">
+            View and manage user accounts and roles
+          </p>
+        </div>
+        <Link href="/admin/users/create">
+          <Button>
+            <Plus className="w-4 h-4 mr-2" />
+            Create User
+          </Button>
+        </Link>
       </div>
 
       <Card>
@@ -119,12 +120,6 @@ export default function AdminUsersClient({
                     <p className="text-xs text-muted-foreground mt-1">
                       {user._count.scans} scans • Joined {new Date(user.createdAt).toLocaleDateString()}
                     </p>
-                    {user.organizationId && (
-                      <p className="text-xs text-blue-600 dark:text-blue-400 mt-1 flex items-center gap-1">
-                        <Building2 className="w-3 h-3" />
-                        {organizations.find(o => o.id === user.organizationId)?.name || 'Organization'}
-                      </p>
-                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
@@ -138,44 +133,15 @@ export default function AdminUsersClient({
                     {user.role.toUpperCase()}
                   </span>
                   
-                  {user.organizationId ? (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleRemoveOrg(user.id)}
-                      disabled={updatingId === user.id}
-                    >
-                      Remove from Org
-                    </Button>
-                  ) : (
-                    <div className="relative">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setShowOrgSelect(showOrgSelect === user.id ? null : user.id)}
-                        disabled={updatingId === user.id}
-                      >
-                        <Building2 className="w-4 h-4 mr-2" />
-                        Assign to Org
-                      </Button>
-                      {showOrgSelect === user.id && (
-                        <div className="absolute right-0 mt-2 w-64 bg-background border rounded-lg shadow-lg z-10 p-2">
-                          {organizations.map(org => (
-                            <button
-                              key={org.id}
-                              onClick={() => handleAssignOrg(user.id, org.id)}
-                              className="w-full text-left px-3 py-2 hover:bg-accent rounded-md text-sm"
-                            >
-                              {org.name}
-                            </button>
-                          ))}
-                          {organizations.length === 0 && (
-                            <p className="text-sm text-muted-foreground px-3 py-2">No organizations available</p>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => handleDeleteClick(user)}
+                    disabled={updatingId === user.id}
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Delete
+                  </Button>
                   
                   <Button
                     size="sm"
@@ -197,6 +163,34 @@ export default function AdminUsersClient({
           </div>
         </CardContent>
       </Card>
+
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete the user <strong>{userToDelete?.email}</strong> and all associated data:
+              <ul className="mt-2 list-disc list-inside space-y-1">
+                <li>{userToDelete?._count.scans || 0} scans</li>
+                <li>All sessions and accounts</li>
+                <li>Dashboard statistics</li>
+              </ul>
+              <p className="mt-2 text-red-600 font-semibold">This action cannot be undone.</p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setDeleteDialogOpen(false)}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteConfirm}
+              disabled={updatingId === userToDelete?.id}
+            >
+              {updatingId === userToDelete?.id ? "Deleting..." : "Delete User"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

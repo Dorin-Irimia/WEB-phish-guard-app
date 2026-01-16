@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Users, Shield, AlertTriangle, CheckCircle, Activity, Building2 } from "lucide-react";
+import { Users, Shield, AlertTriangle, CheckCircle, Activity, Building2, TrendingUp } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
@@ -19,6 +19,20 @@ type AdminStats = {
       name: string;
       email: string;
     };
+  }>;
+  userScansStats: Array<{
+    id: string;
+    name: string;
+    email: string;
+    role: string;
+    _count: {
+      scans: number;
+    };
+    scans: Array<{
+      isPhishing: boolean;
+      riskLevel: string;
+      createdAt: Date;
+    }>;
   }>;
 };
 
@@ -189,6 +203,77 @@ export default function AdminDashboard({ stats }: { stats: AdminStats }) {
                 </div>
               </div>
             ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* User Scan Statistics */}
+      <Card className="mt-8">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <TrendingUp className="w-5 h-5" />
+            User Scan Activity
+          </CardTitle>
+          <CardDescription>Overview of scans performed by each user</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-6">
+            {stats.userScansStats.map((user) => {
+              const threats = user.scans.filter((s) => s.isPhishing).length;
+              const safe = user.scans.filter((s) => !s.isPhishing).length;
+              
+              return (
+                <div key={user.id} className="border-b pb-4 last:border-0">
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <p className="font-semibold">{user.name}</p>
+                      <p className="text-sm text-muted-foreground">{user.email}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-2xl font-bold">{user._count.scans}</p>
+                      <p className="text-xs text-muted-foreground">Total Scans</p>
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4 mt-2">
+                    <div className="bg-red-50 dark:bg-red-950 p-3 rounded-lg">
+                      <p className="text-sm text-muted-foreground">Threats Detected</p>
+                      <p className="text-xl font-bold text-red-600">{threats}</p>
+                    </div>
+                    <div className="bg-green-50 dark:bg-green-950 p-3 rounded-lg">
+                      <p className="text-sm text-muted-foreground">Safe Scans</p>
+                      <p className="text-xl font-bold text-green-600">{safe}</p>
+                    </div>
+                  </div>
+                  
+                  {user.scans.length > 0 && (
+                    <div className="mt-3">
+                      <p className="text-xs text-muted-foreground mb-2">Recent Activity:</p>
+                      <div className="flex flex-wrap gap-2">
+                        {user.scans.slice(0, 5).map((scan, idx) => (
+                          <span
+                            key={idx}
+                            className={`text-xs px-2 py-1 rounded ${
+                              scan.isPhishing
+                                ? "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200"
+                                : "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200"
+                            }`}
+                          >
+                            {scan.riskLevel}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            
+            {stats.userScansStats.length === 0 && (
+              <p className="text-center text-muted-foreground py-8">
+                No scan activity yet. Users will appear here once they start scanning.
+              </p>
+            )}
           </div>
         </CardContent>
       </Card>

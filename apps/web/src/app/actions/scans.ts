@@ -140,7 +140,22 @@ export async function getAllUsers() {
 
 // ADMIN: Update user role
 export async function updateUserRole(userId: string, role: "user" | "admin") {
-  await requireAdmin();
+  const session = await requireAdmin();
+
+  // Get the target user to provide better error messages
+  const targetUser = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, name: true, email: true, role: true },
+  });
+
+  if (!targetUser) {
+    throw new Error("User not found");
+  }
+
+  // Prevent admin from changing their own role
+  if (userId === session.user.id) {
+    throw new Error("You cannot modify your own role. Please ask another administrator for assistance.");
+  }
 
   await prisma.user.update({
     where: { id: userId },
@@ -151,11 +166,50 @@ export async function updateUserRole(userId: string, role: "user" | "admin") {
   return { success: true };
 }
 
+// ADMIN: Delete user
+export async function deleteUser(userId: string) {
+  const session = await requireAdmin();
+
+  // Prevent deleting yourself
+  if (userId === session.user.id) {
+    throw new Error("You cannot delete your own account");
+  }
+
+  // Get user details first
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      email: true,
+      role: true,
+      _count: {
+        select: {
+          scans: true,
+        },
+      },
+    },
+  });
+
+  if (!user) {
+    throw new Error("User not found");
+  }
+
+  // Delete user (cascade will handle related records)
+  await prisma.user.delete({
+    where: { id: userId },
+  });
+
+  revalidatePath("/admin/users");
+  return { 
+    success: true, 
+    message: `User ${user.email} and ${user._count.scans} scans deleted successfully` 
+  };
+}
+
 // ADMIN: Get dashboard stats
 export async function getAdminStats() {
   await requireAdmin();
 
-  const [totalUsers, totalScans, threatsDetected, recentScans] = await Promise.all([
+  const [totalUsers, totalScans, threatsDetected, recentScans, userScansStats] = await Promise.all([
     prisma.user.count(),
     prisma.scan.count({ where: { isDeleted: false } }),
     prisma.scan.count({ where: { isPhishing: true, isDeleted: false } }),
@@ -174,6 +228,40 @@ export async function getAdminStats() {
       },
       take: 10,
     }),
+    // Get per-user scan statistics
+    prisma.user.findMany({
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        _count: {
+          select: {
+            scans: true,
+          },
+        },
+        scans: {
+          where: {
+            isDeleted: false,
+          },
+          select: {
+            isPhishing: true,
+            riskLevel: true,
+            createdAt: true,
+          },
+          orderBy: {
+            createdAt: "desc",
+          },
+          take: 5,
+        },
+      },
+      orderBy: {
+        scans: {
+          _count: "desc",
+        },
+      },
+      take: 10,
+    }),
   ]);
 
   return {
@@ -182,5 +270,6 @@ export async function getAdminStats() {
     threatsDetected,
     safeScans: totalScans - threatsDetected,
     recentScans,
+    userScansStats, // Sinteza pe utilizator
   };
 }

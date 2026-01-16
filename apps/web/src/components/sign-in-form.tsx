@@ -1,5 +1,6 @@
 import { useForm } from "@tanstack/react-form";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { toast } from "sonner";
 import z from "zod";
 
@@ -127,6 +128,12 @@ export default function SignInForm({ onSwitchToSignUp }: { onSwitchToSignUp: () 
         >
           Need an account? Sign Up
         </Button>
+      </div>
+
+      <div className="mt-2 text-center text-sm text-gray-600 dark:text-gray-400">
+        <Link href="/setup" className="hover:underline">
+          First time? Set up admin account
+        </Link>
       </div>
     </div>
   );
