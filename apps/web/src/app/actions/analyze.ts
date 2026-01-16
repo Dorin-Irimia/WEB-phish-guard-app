@@ -114,26 +114,44 @@ function analyzeText(text: string): { score: number; threats: string[] } {
   const urgencyWords = [
     "urgent",
     "immediate",
+    "immediately",
     "act now",
     "limited time",
     "expires",
     "suspended",
     "verify now",
     "confirm immediately",
+    "24 hours",
+    "48 hours",
+    "action required",
+    "respond now",
+    "click here now",
   ];
   urgencyWords.forEach((word) => {
     if (lowerText.includes(word)) {
       threats.push(`Uses urgency tactic: "${word}"`);
-      suspiciousCount += 1;
+      suspiciousCount += 1.5;
     }
   });
 
   // Check for threatening language
-  const threats_words = ["account closed", "legal action", "suspended", "locked", "blocked"];
+  const threats_words = [
+    "account closed", 
+    "account will be closed",
+    "legal action", 
+    "suspended", 
+    "locked", 
+    "blocked",
+    "terminate",
+    "deactivate",
+    "unauthorized access",
+    "unusual activity",
+    "suspicious activity",
+  ];
   threats_words.forEach((word) => {
     if (lowerText.includes(word)) {
       threats.push(`Contains threatening language: "${word}"`);
-      suspiciousCount += 1;
+      suspiciousCount += 1.5;
     }
   });
 
@@ -146,6 +164,11 @@ function analyzeText(text: string): { score: number; threats: string[] } {
     "bank account",
     "ssn",
     "cvv",
+    "verify your account",
+    "verify your identity",
+    "confirm your identity",
+    "update your information",
+    "update payment",
   ];
   sensitiveRequests.forEach((request) => {
     if (lowerText.includes(request)) {
@@ -155,8 +178,89 @@ function analyzeText(text: string): { score: number; threats: string[] } {
   });
 
   // Check for generic greetings
-  if (lowerText.includes("dear customer") || lowerText.includes("dear user")) {
+  if (lowerText.includes("dear customer") || 
+      lowerText.includes("dear user") ||
+      lowerText.includes("dear member") ||
+      lowerText.includes("valued customer")) {
     threats.push("Uses generic greeting instead of personal name");
+    suspiciousCount += 1;
+  }
+
+  // Check for common phishing phrases
+  const phishingPhrases = [
+    "click here to",
+    "click the link",
+    "verify account",
+    "confirm account",
+    "update account",
+    "reactivate",
+    "re-activate",
+    "validate",
+    "unusual activity",
+    "unusual sign-in",
+    "suspicious sign-in",
+  ];
+  phishingPhrases.forEach((phrase) => {
+    if (lowerText.includes(phrase)) {
+      threats.push(`Contains phishing phrase: "${phrase}"`);
+      suspiciousCount += 1;
+    }
+  });
+
+  // Provider Mismatch Check - Corporate security alerts to personal emails
+  if ((lowerText.includes("microsoft") || lowerText.includes("office 365") || lowerText.includes("account team")) &&
+      (lowerText.includes("@gmail.com") || lowerText.includes("@yahoo.com") || lowerText.includes("@hotmail.com"))) {
+    threats.push("HIGH RISK: Corporate security alert sent to personal email address");
+    suspiciousCount += 3;
+  }
+
+  // Check for email masking patterns (ra**6@gmail.com)
+  if (/[a-z]{1,3}\*+[0-9]@/i.test(text)) {
+    threats.push("Uses masked email address pattern (e.g., ra**6@gmail.com)");
+    suspiciousCount += 1.5;
+  }
+
+  // Check for IP address mentions (often in fake security alerts)
+  if (/\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/.test(text)) {
+    threats.push("Contains IP address (common in fake security alerts)");
+    suspiciousCount += 0.5;
+  }
+
+  // Check for foreign language characters (Chinese, Cyrillic, Arabic)
+  // These can indicate targeted phishing with wrong language
+  const hasChinese = /[\u4e00-\u9fa5]/.test(text);
+  const hasCyrillic = /[\u0400-\u04FF]/.test(text);
+  const hasArabic = /[\u0600-\u06FF]/.test(text);
+  
+  if (hasChinese || hasCyrillic || hasArabic) {
+    const langName = hasChinese ? "Chinese" : hasCyrillic ? "Cyrillic" : "Arabic";
+    threats.push(`Contains ${langName} characters - verify expected language`);
+    suspiciousCount += 2;
+  }
+
+  // Check for forwarded message patterns
+  if (lowerText.includes("forwarded message") || 
+      lowerText.includes("---------- forwarded") ||
+      text.includes("Fwd:") || 
+      lowerText.includes("date:") && lowerText.includes("from:") && lowerText.includes("subject:")) {
+    threats.push("Appears to be a forwarded message (verify sender authenticity)");
+    suspiciousCount += 1.5;
+  }
+
+  // Check for password/security change notifications
+  if ((lowerText.includes("password") || lowerText.includes("security")) &&
+      (lowerText.includes("changed") || lowerText.includes("modified") || 
+       lowerText.includes("updated") || lowerText.includes("reset"))) {
+    threats.push("Contains password/security change notification");
+    suspiciousCount += 1.5;
+  }
+
+  // Check for account recovery/lock mentions
+  if (lowerText.includes("account recovery") || 
+      lowerText.includes("recover account") ||
+      lowerText.includes("lock account") ||
+      lowerText.includes("restore access")) {
+    threats.push("Mentions account recovery (verify authenticity)");
     suspiciousCount += 1;
   }
 
@@ -177,15 +281,16 @@ function analyzeText(text: string): { score: number; threats: string[] } {
     });
   });
 
-  const score = Math.min(suspiciousCount / 8, 1);
+  // Calculate score with better scaling
+  const score = Math.min(suspiciousCount / 6, 1); // Reduced denominator for higher sensitivity
   return { score, threats };
 }
 
 function calculateRiskLevel(score: number): "safe" | "low" | "medium" | "high" | "critical" {
-  if (score < 0.2) return "safe";
-  if (score < 0.4) return "low";
-  if (score < 0.6) return "medium";
-  if (score < 0.8) return "high";
+  if (score < 0.15) return "safe";
+  if (score < 0.3) return "low";
+  if (score < 0.5) return "medium";
+  if (score < 0.7) return "high";
   return "critical";
 }
 
@@ -217,11 +322,16 @@ export async function analyzePhishing(input: AnalyzeInput): Promise<AnalysisResu
 
   const riskLevel = calculateRiskLevel(overallScore);
   const isPhishing = overallScore > 0.5;
-  const confidence = Math.min(0.6 + (allThreats.length * 0.05), 0.95);
+  
+  // Confidence should reflect how certain we are of the result
+  // More threats detected = higher confidence in our assessment
+  const confidence = allThreats.length > 0 
+    ? Math.min(0.7 + (allThreats.length * 0.05), 0.98)
+    : 0.5; // Low confidence if no threats detected
 
   const analysis = isPhishing
-    ? `This ${input.url ? "URL" : input.imageUrl ? "image" : "content"} shows ${allThreats.length} suspicious indicators commonly associated with phishing attempts. Exercise caution and verify the source before proceeding.`
-    : `No significant threats detected. However, always verify the sender's identity and be cautious with personal information.`;
+    ? `This ${input.url ? "URL" : input.imageUrl ? "image" : "content"} shows ${allThreats.length} suspicious indicator${allThreats.length !== 1 ? 's' : ''} commonly associated with phishing attempts. Risk score: ${(overallScore * 100).toFixed(1)}%. Exercise caution and verify the source before proceeding.`
+    : `No significant threats detected in this ${input.url ? "URL" : input.imageUrl ? "image" : "content"}. Risk score: ${(overallScore * 100).toFixed(1)}%. However, always verify the sender's identity and be cautious with personal information.`;
 
   // Save to database
   await prisma.scan.create({

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { Send, Link as LinkIcon, FileText, AlertTriangle, CheckCircle, XCircle, Upload, Image as ImageIcon } from "lucide-react";
+import { Send, Link as LinkIcon, FileText, AlertTriangle, CheckCircle, XCircle, Upload, Image as ImageIcon, Loader } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -9,6 +9,7 @@ import { Label } from "./ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { analyzePhishing } from "@/app/actions/analyze";
 import { uploadScanImage } from "@/app/actions/upload";
+import { extractTextFromImage } from "@/lib/ocr";
 
 type AnalysisResult = {
   textScore: number;
@@ -26,8 +27,10 @@ export default function ManualAnalysis() {
   const [url, setUrl] = useState("");
   const [textContent, setTextContent] = useState("");
   const [imageUrl, setImageUrl] = useState("");
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [extractingText, setExtractingText] = useState(false);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -46,18 +49,59 @@ export default function ManualAnalysis() {
     }
 
     setUploading(true);
-    const formData = new FormData();
-    formData.append("file", file);
 
     try {
-      const result = await uploadScanImage(formData);
-      setImageUrl(result.imageUrl);
-      toast.success("Image uploaded successfully");
+      // Create local preview
+      const previewUrl = URL.createObjectURL(file);
+      setImagePreview(previewUrl);
+
+      // Upload image for record keeping (in parallel with OCR)
+      const uploadPromise = (async () => {
+        const formData = new FormData();
+        formData.append("file", file);
+        const result = await uploadScanImage(formData);
+        setImageUrl(result.imageUrl);
+      })();
+
+      // Extract text using OCR
+      setExtractingText(true);
+      toast.info("Extracting text from image...");
+      
+      try {
+        const extractedText = await extractTextFromImage(file);
+        
+        if (extractedText && extractedText.trim().length > 10) {
+          setTextContent(extractedText);
+          toast.success("Text extracted! Review and edit if needed, then analyze.");
+        } else {
+          toast.warning("Little or no text detected. You can add text manually.");
+        }
+      } catch (ocrError) {
+        console.error("OCR failed:", ocrError);
+        toast.warning("Text extraction failed. You can add text manually.");
+      } finally {
+        setExtractingText(false);
+      }
+
+      // Wait for upload to complete
+      await uploadPromise;
+      
     } catch (error: any) {
       toast.error(error.message || "Failed to upload image");
       console.error(error);
     } finally {
       setUploading(false);
+    }
+  };
+
+  const handleClearImage = () => {
+    if (imagePreview) {
+      URL.revokeObjectURL(imagePreview);
+    }
+    setImagePreview(null);
+    setImageUrl("");
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
     }
   };
 
@@ -81,7 +125,9 @@ export default function ManualAnalysis() {
     try {
       const data = await analyzePhishing({
         url: activeTab === "url" ? url : undefined,
-        textContent: activeTab === "text" ? textContent : undefined,
+        textContent: activeTab === "text" || (activeTab === "image" && textContent.trim()) 
+          ? textContent 
+          : undefined,
         imageUrl: activeTab === "image" ? imageUrl : undefined,
       });
 
@@ -253,17 +299,61 @@ export default function ManualAnalysis() {
                 </Button>
               </div>
 
-              {imageUrl && (
-                <div className="space-y-2">
-                  <Label>Preview</Label>
-                  <div className="relative rounded-lg border overflow-hidden">
+              {imagePreview && (
+                <div className="space-y-3">
+                  <div className="relative rounded-lg border overflow-hidden bg-gray-50">
                     <img
-                      src={imageUrl}
-                      alt="Uploaded scan"
-                      className="w-full h-auto"
+                      src={imagePreview}
+                      alt="Uploaded preview"
+                      className="w-full h-auto max-h-[400px] object-contain"
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleClearImage}
+                      className="absolute top-2 right-2 bg-white/90 hover:bg-white"
+                    >
+                      <XCircle className="w-4 h-4 mr-1" />
+                      Clear
+                    </Button>
+                  </div>
+                  
+                  {extractingText && (
+                    <div className="flex items-center gap-2 text-sm text-blue-600 bg-blue-50 p-3 rounded-lg">
+                      <Loader className="h-4 w-4 animate-spin" />
+                      Extracting text from image...
+                    </div>
+                  )}
+                  
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <strong>Note:</strong> OCR text extraction may not be perfect, especially with screenshots. 
+                        Please review and edit the extracted text as needed before analyzing.
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="image-text">
+                      {textContent ? "Extracted Text (Review and edit if needed)" : "Add text from the image (optional)"}
+                    </Label>
+                    <textarea
+                      id="image-text"
+                      className="w-full min-h-[120px] p-3 rounded-lg border border-input bg-background"
+                      placeholder="Text will be extracted automatically from image, or enter manually..."
+                      value={textContent}
+                      onChange={(e) => setTextContent(e.target.value)}
+                      disabled={extractingText}
                     />
                   </div>
-                  <Button onClick={handleAnalyze} disabled={analyzing} className="w-full">
+
+                  <Button 
+                    onClick={handleAnalyze} 
+                    disabled={analyzing || extractingText} 
+                    className="w-full bg-blue-600 hover:bg-blue-700"
+                  >
                     {analyzing ? (
                       <>Analyzing...</>
                     ) : (
