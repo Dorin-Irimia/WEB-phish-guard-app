@@ -17,8 +17,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "phish-guard-app",
-  description: "phish-guard-app",
+  title: "PhishGuard",
+  description: "Advanced phishing detection and protection platform",
 };
 
 export default function RootLayout({
