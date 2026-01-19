@@ -48,3 +48,15 @@ coverage
 .cache
 tmp
 temp
+
+# Python
+*.pyc
+__pycache__
+venv
+.venv
+*.pyo
+*.pyd
+.Python
+
+# Better-T-Stack
+bts.jsonc

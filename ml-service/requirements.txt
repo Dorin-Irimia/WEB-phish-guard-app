@@ -1,0 +1,13 @@
+# FastAPI and server
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+pydantic==2.5.3
+
+# Machine Learning - using older version compatible with TF.js models
+tensorflow==2.15.0
+tf-keras==2.15.0
+numpy>=1.26.0,<2.0.0
+
+# Utilities
+python-multipart==0.0.6
+tensorflowjs==4.10.0

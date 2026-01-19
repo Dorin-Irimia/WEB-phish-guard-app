@@ -1,15 +1,12 @@
 import Link from "next/link";
-import { auth } from "@phish-guard-app/auth";
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { Shield, Zap, Lock, TrendingUp, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { getSession, getCurrentYear } from "@/lib/auth-helpers";
 
 export default async function Home() {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
+  const session = await getSession();
 
   // If user is logged in, redirect to dashboard
   if (session?.user) {
@@ -118,7 +115,7 @@ export default async function Home() {
 
       {/* Footer */}
       <div className="container mx-auto px-4 py-6 text-center text-gray-600 dark:text-gray-400 border-t border-gray-200 dark:border-gray-800">
-        <p className="text-sm">© 2026 PhishGuard. All rights reserved.</p>
+        <p className="text-sm">© {getCurrentYear()} PhishGuard. All rights reserved.</p>
       </div>
     </div>
   );

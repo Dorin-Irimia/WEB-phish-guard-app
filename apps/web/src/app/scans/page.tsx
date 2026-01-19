@@ -1,13 +1,10 @@
-import { auth } from "@phish-guard-app/auth";
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { getSession } from "@/lib/auth-helpers";
 import ScansClient from "./scans-client";
 import { getMyScans } from "@/app/actions/scans";
 
 export default async function ScansPage() {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
+  const session = await getSession();
 
   if (!session?.user) {
     redirect("/login");

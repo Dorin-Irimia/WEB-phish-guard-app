@@ -14,8 +14,6 @@ model User {
   // PhishGuard relations
   scans         Scan[]
   dashboardStats DashboardStats?
-  scanActivities ScanActivity[]
-  subscription   Subscription?
 
   @@unique([email])
   @@map("user")

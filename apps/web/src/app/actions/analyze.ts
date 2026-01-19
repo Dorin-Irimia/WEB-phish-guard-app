@@ -1,9 +1,9 @@
 "use server";
 
-import { auth } from "@phish-guard-app/auth";
 import prisma from "@phish-guard-app/db";
-import { headers } from "next/headers";
 import { requireAuth } from "@/lib/auth-helpers";
+import { checkSafeBrowsing, getThreatSeverity } from "@/lib/safe-browsing";
+import { analyzeTextML, analyzeUrlML } from "@/lib/ml-service";
 
 type AnalyzeInput = {
   url?: string;
@@ -23,7 +23,7 @@ type AnalysisResult = {
 };
 
 // Heuristic analysis for URLs
-function analyzeURL(url: string): { score: number; threats: string[] } {
+function analyzeUrlHeuristic(url: string): { score: number; threats: string[] } {
   const threats: string[] = [];
   let suspiciousCount = 0;
 
@@ -104,7 +104,7 @@ function analyzeURL(url: string): { score: number; threats: string[] } {
 }
 
 // Heuristic analysis for text content
-function analyzeText(text: string): { score: number; threats: string[] } {
+function analyzeTextHeuristic(text: string): { score: number; threats: string[] } {
   const threats: string[] = [];
   let suspiciousCount = 0;
 
@@ -118,7 +118,6 @@ function analyzeText(text: string): { score: number; threats: string[] } {
     "act now",
     "limited time",
     "expires",
-    "suspended",
     "verify now",
     "confirm immediately",
     "24 hours",
@@ -135,7 +134,7 @@ function analyzeText(text: string): { score: number; threats: string[] } {
   });
 
   // Check for threatening language
-  const threats_words = [
+  const threateningWords = [
     "account closed", 
     "account will be closed",
     "legal action", 
@@ -148,7 +147,7 @@ function analyzeText(text: string): { score: number; threats: string[] } {
     "unusual activity",
     "suspicious activity",
   ];
-  threats_words.forEach((word) => {
+  threateningWords.forEach((word) => {
     if (lowerText.includes(word)) {
       threats.push(`Contains threatening language: "${word}"`);
       suspiciousCount += 1.5;
@@ -190,13 +189,10 @@ function analyzeText(text: string): { score: number; threats: string[] } {
   const phishingPhrases = [
     "click here to",
     "click the link",
-    "verify account",
-    "confirm account",
     "update account",
     "reactivate",
     "re-activate",
     "validate",
-    "unusual activity",
     "unusual sign-in",
     "suspicious sign-in",
   ];
@@ -300,45 +296,140 @@ export async function analyzePhishing(input: AnalyzeInput): Promise<AnalysisResu
   let urlScore = 0;
   let textScore = 0;
   const allThreats: string[] = [];
+  let mlDetectionUsed = false;
+  let extractedText = input.textContent || "";
 
-  // Analyze URL if provided
+  // === IMAGE ANALYSIS (OCR) ===
+  if (input.imageUrl) {
+    try {
+      console.log("🖼️ Processing image with OCR...");
+      // Extract text from image using OCR
+      const { extractTextFromImage } = await import("@/lib/ocr");
+      
+      // Fetch the image
+      const response = await fetch(input.imageUrl);
+      const blob = await response.blob();
+      const file = new File([blob], "image.jpg", { type: blob.type });
+      
+      // Extract text
+      const ocrText = await extractTextFromImage(file);
+      extractedText = ocrText;
+      console.log(`✅ OCR extracted ${ocrText.length} characters`);
+      
+      if (ocrText.length < 10) {
+        allThreats.push("Image contains very little text - may be suspicious");
+      }
+    } catch (error) {
+      console.error("OCR failed:", error);
+      allThreats.push("Failed to extract text from image");
+    }
+  }
+
+  // === URL ANALYSIS ===
+  let safeBrowsingScore = 0;
+  let urlMLScore = 0;
   if (input.url) {
-    const urlAnalysis = analyzeURL(input.url);
-    urlScore = urlAnalysis.score;
+    // 1. Google Safe Browsing (authoritative database)
+    const safeBrowsingResult = await checkSafeBrowsing(input.url);
+    
+    if (!safeBrowsingResult.isSafe) {
+      safeBrowsingScore = getThreatSeverity(safeBrowsingResult.threatTypes);
+      allThreats.push(...safeBrowsingResult.threats);
+    }
+
+    // 1. ML Model via Service (trained on phishing URLs)
+    try {
+      const mlScore = await analyzeUrlML(input.url);
+      if (mlScore !== null && mlScore >= 0) {
+        urlMLScore = mlScore;
+        mlDetectionUsed = true;
+        if (mlScore > 0.7) {
+          allThreats.push(`ML model detected phishing patterns (confidence: ${(mlScore * 100).toFixed(0)}%)`);
+        }
+      }
+    } catch (error) {
+      console.error('URL ML analysis error:', error);
+    }
+
+    // 3. Heuristic analysis (rule-based)
+    const urlAnalysis = analyzeUrlHeuristic(input.url);
     allThreats.push(...urlAnalysis.threats);
+
+    // Combine scores: prioritize Safe Browsing > ML > Heuristics
+    if (safeBrowsingScore > 0) {
+      urlScore = safeBrowsingScore; // Google flagged it - highest confidence
+    } else if (urlMLScore > 0) {
+      urlScore = Math.max(urlMLScore, urlAnalysis.score); // ML or heuristics, whichever higher
+    } else {
+      urlScore = urlAnalysis.score; // Only heuristics
+    }
   }
 
-  // Analyze text if provided
-  if (input.textContent) {
-    const textAnalysis = analyzeText(input.textContent);
-    textScore = textAnalysis.score;
+  // === TEXT ANALYSIS ===
+  let textMLScore = 0;
+  if (extractedText && extractedText.length > 0) {
+    // 1. ML Model via Service (trained on phishing emails)
+    try {
+      const mlScore = await analyzeTextML(extractedText);
+      if (mlScore !== null && mlScore >= 0) {
+        textMLScore = mlScore;
+        mlDetectionUsed = true;
+        if (mlScore > 0.7) {
+          allThreats.push(`ML model detected suspicious text patterns (confidence: ${(mlScore * 100).toFixed(0)}%)`);
+        }
+      }
+    } catch (error) {
+      console.error('Text ML analysis error:', error);
+    }
+
+    // 2. Heuristic analysis
+    const textAnalysis = analyzeTextHeuristic(extractedText);
     allThreats.push(...textAnalysis.threats);
+
+    // Combine scores: ML takes priority if available
+    textScore = textMLScore > 0 ? Math.max(textMLScore, textAnalysis.score) : textAnalysis.score;
   }
 
-  // Calculate overall score
-  const overallScore = input.url && input.textContent 
-    ? (urlScore + textScore) / 2 
-    : urlScore || textScore;
+  // Calculate overall score (Google Safe Browsing has priority)
+  const overallScore = safeBrowsingScore > 0 
+    ? safeBrowsingScore // If Google flags it, that's the score
+    : input.url && input.textContent 
+      ? (urlScore + textScore) / 2 
+      : urlScore || textScore;
 
   const riskLevel = calculateRiskLevel(overallScore);
   const isPhishing = overallScore > 0.5;
   
-  // Confidence should reflect how certain we are of the result
-  // More threats detected = higher confidence in our assessment
-  const confidence = allThreats.length > 0 
-    ? Math.min(0.7 + (allThreats.length * 0.05), 0.98)
-    : 0.5; // Low confidence if no threats detected
+  // Confidence calculation based on detection methods used
+  let confidence = 0.5; // Base confidence
+  if (safeBrowsingScore > 0) {
+    confidence = 0.95; // Very high confidence - Google's database
+  } else if (mlDetectionUsed && (urlMLScore > 0.7 || textMLScore > 0.7)) {
+    confidence = 0.88; // High confidence - ML detected strong patterns
+  } else if (mlDetectionUsed) {
+    confidence = Math.min(0.75 + (allThreats.length * 0.03), 0.92); // ML + heuristics
+  } else {
+    confidence = Math.min(0.65 + (allThreats.length * 0.05), 0.85); // Only heuristics
+  }
+
+  // Generate analysis message
+  let analysisMethod = '';
+  if (safeBrowsingScore > 0) {
+    analysisMethod = 'Google Safe Browsing flagged this URL as dangerous. ';
+  } else if (mlDetectionUsed) {
+    analysisMethod = 'AI-powered detection analyzed this content. ';
+  }
 
   const analysis = isPhishing
-    ? `This ${input.url ? "URL" : input.imageUrl ? "image" : "content"} shows ${allThreats.length} suspicious indicator${allThreats.length !== 1 ? 's' : ''} commonly associated with phishing attempts. Risk score: ${(overallScore * 100).toFixed(1)}%. Exercise caution and verify the source before proceeding.`
-    : `No significant threats detected in this ${input.url ? "URL" : input.imageUrl ? "image" : "content"}. Risk score: ${(overallScore * 100).toFixed(1)}%. However, always verify the sender's identity and be cautious with personal information.`;
+    ? `This ${input.url ? "URL" : input.imageUrl ? "image" : "content"} shows ${allThreats.length} suspicious indicator${allThreats.length !== 1 ? 's' : ''} commonly associated with phishing attempts. ${analysisMethod}Risk score: ${(overallScore * 100).toFixed(1)}%. Exercise caution and verify the source before proceeding.`
+    : `No significant threats detected in this ${input.url ? "URL" : input.imageUrl ? "image" : "content"}. ${mlDetectionUsed ? 'AI models analyzed the content and found it safe. ' : ''}Risk score: ${(overallScore * 100).toFixed(1)}%. However, always verify the sender's identity and be cautious with personal information.`;
 
   // Save to database
   await prisma.scan.create({
     data: {
       userId: session.user.id,
       url: input.url,
-      textContent: input.textContent,
+      textContent: extractedText || input.textContent,
       imageUrl: input.imageUrl,
       textScore,
       urlScore,

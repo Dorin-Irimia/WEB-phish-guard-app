@@ -15,6 +15,11 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "./ui/
 export default function SignInForm({ onSwitchToSignUp }: { onSwitchToSignUp: () => void }) {
   const router = useRouter();
   const { isPending } = authClient.useSession();
+  const [adminExists, setAdminExists] = useState(true);
+
+  useEffect(() => {
+    checkAdminExists().then(setAdminExists);
+  }, []);
 
   const form = useForm({
     defaultValues: {
@@ -142,11 +147,13 @@ export default function SignInForm({ onSwitchToSignUp }: { onSwitchToSignUp: () 
             </Button>
           </div>
 
-          <div className="mt-2 text-center text-xs">
-            <Link href="/setup" className="text-gray-500 dark:text-gray-500 hover:underline">
-              First time? Set up admin account →
-            </Link>
-          </div>
+          {!adminExists && (
+            <div className="mt-2 text-center text-xs">
+              <Link href="/setup" className="text-gray-500 dark:text-gray-500 hover:underline">
+                First time? Set up admin account →
+              </Link>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

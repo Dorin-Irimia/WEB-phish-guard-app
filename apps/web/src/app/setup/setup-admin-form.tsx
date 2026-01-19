@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { createFirstAdmin } from "@/app/actions/setup";
+import { authClient } from "@/lib/auth-client";
 
 export default function SetupAdminForm() {
   const router = useRouter();
@@ -36,12 +37,21 @@ export default function SetupAdminForm() {
           password: value.password,
         });
 
-        toast.success("Admin account created successfully!");
+        toast.success("Admin account created successfully! Logging in...");
         
-        // Redirect to login after a short delay
-        setTimeout(() => {
-          router.push("/login");
-        }, 1500);
+        // Auto-login after creating admin account
+        await authClient.signIn.email({
+          email: value.email,
+          password: value.password,
+        }, {
+          onSuccess: () => {
+            router.push("/dashboard");
+          },
+          onError: () => {
+            // If auto-login fails, redirect to login page
+            router.push("/login");
+          }
+        });
       } catch (error: any) {
         toast.error(error.message || "Failed to create admin account");
         setIsSubmitting(false);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Send, Link as LinkIcon, FileText, AlertTriangle, CheckCircle, XCircle, Upload, Image as ImageIcon, Loader } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "./ui/button";
@@ -22,6 +22,15 @@ type AnalysisResult = {
   analysis: string;
 };
 
+// Session storage keys
+const SESSION_KEYS = {
+  ACTIVE_TAB: "phishguard_active_tab",
+  URL: "phishguard_url",
+  TEXT_CONTENT: "phishguard_text_content",
+  IMAGE_URL: "phishguard_image_url",
+  IMAGE_PREVIEW: "phishguard_image_preview",
+};
+
 export default function ManualAnalysis() {
   const [activeTab, setActiveTab] = useState<"url" | "text" | "image">("url");
   const [url, setUrl] = useState("");
@@ -32,7 +41,66 @@ export default function ManualAnalysis() {
   const [uploading, setUploading] = useState(false);
   const [extractingText, setExtractingText] = useState(false);
   const [result, setResult] = useState<AnalysisResult | null>(null);
+  const [hydrated, setHydrated] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Restore state from sessionStorage on mount
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const savedTab = sessionStorage.getItem(SESSION_KEYS.ACTIVE_TAB) as "url" | "text" | "image" | null;
+      const savedUrl = sessionStorage.getItem(SESSION_KEYS.URL);
+      const savedText = sessionStorage.getItem(SESSION_KEYS.TEXT_CONTENT);
+      const savedImageUrl = sessionStorage.getItem(SESSION_KEYS.IMAGE_URL);
+      const savedImagePreview = sessionStorage.getItem(SESSION_KEYS.IMAGE_PREVIEW);
+
+      if (savedTab) setActiveTab(savedTab);
+      if (savedUrl) setUrl(savedUrl);
+      if (savedText) setTextContent(savedText);
+      if (savedImageUrl) setImageUrl(savedImageUrl);
+      if (savedImagePreview) setImagePreview(savedImagePreview);
+
+      setHydrated(true);
+    }
+  }, []);
+
+  // Persist activeTab to sessionStorage
+  useEffect(() => {
+    if (hydrated) {
+      sessionStorage.setItem(SESSION_KEYS.ACTIVE_TAB, activeTab);
+    }
+  }, [activeTab, hydrated]);
+
+  // Persist url to sessionStorage
+  useEffect(() => {
+    if (hydrated) {
+      sessionStorage.setItem(SESSION_KEYS.URL, url);
+    }
+  }, [url, hydrated]);
+
+  // Persist textContent to sessionStorage
+  useEffect(() => {
+    if (hydrated) {
+      sessionStorage.setItem(SESSION_KEYS.TEXT_CONTENT, textContent);
+    }
+  }, [textContent, hydrated]);
+
+  // Persist imageUrl to sessionStorage
+  useEffect(() => {
+    if (hydrated) {
+      sessionStorage.setItem(SESSION_KEYS.IMAGE_URL, imageUrl);
+    }
+  }, [imageUrl, hydrated]);
+
+  // Persist imagePreview to sessionStorage
+  useEffect(() => {
+    if (hydrated) {
+      if (imagePreview) {
+        sessionStorage.setItem(SESSION_KEYS.IMAGE_PREVIEW, imagePreview);
+      } else {
+        sessionStorage.removeItem(SESSION_KEYS.IMAGE_PREVIEW);
+      }
+    }
+  }, [imagePreview, hydrated]);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -51,9 +119,15 @@ export default function ManualAnalysis() {
     setUploading(true);
 
     try {
-      // Create local preview
-      const previewUrl = URL.createObjectURL(file);
-      setImagePreview(previewUrl);
+      // Convert image to base64 for persistent preview
+      const reader = new FileReader();
+      const base64Promise = new Promise<string>((resolve) => {
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.readAsDataURL(file);
+      });
+      
+      const base64Preview = await base64Promise;
+      setImagePreview(base64Preview);
 
       // Upload image for record keeping (in parallel with OCR)
       const uploadPromise = (async () => {
@@ -95,14 +169,16 @@ export default function ManualAnalysis() {
   };
 
   const handleClearImage = () => {
-    if (imagePreview) {
-      URL.revokeObjectURL(imagePreview);
-    }
     setImagePreview(null);
     setImageUrl("");
+    setTextContent("");
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
+    // Clear from sessionStorage too
+    sessionStorage.removeItem(SESSION_KEYS.IMAGE_PREVIEW);
+    sessionStorage.removeItem(SESSION_KEYS.IMAGE_URL);
+    sessionStorage.removeItem(SESSION_KEYS.TEXT_CONTENT);
   };
 
   const handleAnalyze = async () => {
@@ -252,7 +328,7 @@ export default function ManualAnalysis() {
               <Label htmlFor="text">Text Content</Label>
               <textarea
                 id="text"
-                className="w-full min-h-[200px] p-3 rounded-lg border border-input bg-background"
+                className="w-full min-h-50 p-3 rounded-lg border border-input bg-background"
                 placeholder="Paste email or message content here..."
                 value={textContent}
                 onChange={(e) => setTextContent(e.target.value)}
@@ -305,7 +381,7 @@ export default function ManualAnalysis() {
                     <img
                       src={imagePreview}
                       alt="Uploaded preview"
-                      className="w-full h-auto max-h-[400px] object-contain"
+                      className="w-full h-auto max-h-100 object-contain"
                     />
                     <Button
                       variant="outline"
@@ -327,7 +403,7 @@ export default function ManualAnalysis() {
                   
                   <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">
                     <div className="flex items-start gap-2">
-                      <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                      <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
                       <div>
                         <strong>Note:</strong> OCR text extraction may not be perfect, especially with screenshots. 
                         Please review and edit the extracted text as needed before analyzing.
@@ -341,7 +417,7 @@ export default function ManualAnalysis() {
                     </Label>
                     <textarea
                       id="image-text"
-                      className="w-full min-h-[120px] p-3 rounded-lg border border-input bg-background"
+                      className="w-full min-h-30 p-3 rounded-lg border border-input bg-background"
                       placeholder="Text will be extracted automatically from image, or enter manually..."
                       value={textContent}
                       onChange={(e) => setTextContent(e.target.value)}

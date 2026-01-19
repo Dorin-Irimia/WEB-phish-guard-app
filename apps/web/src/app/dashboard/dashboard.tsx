@@ -6,8 +6,30 @@ import { authClient } from "@/lib/auth-client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
-export default function Dashboard({ session }: { session: typeof authClient.$Infer.Session }) {
+type UserStats = {
+  totalScans: number;
+  threatsDetected: number;
+  safeScans: number;
+};
+
+type AdminStats = {
+  totalUsers: number;
+  totalScans: number;
+  threatsDetected: number;
+  safeScans: number;
+  recentScans: any[];
+  userScansStats: any[];
+};
+
+export default function Dashboard({ 
+  session, 
+  stats 
+}: { 
+  session: typeof authClient.$Infer.Session;
+  stats: UserStats | AdminStats;
+}) {
   const isAdmin = session.user.role === "admin";
+  const adminStats = isAdmin ? (stats as AdminStats) : null;
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -91,7 +113,7 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
             </CardHeader>
             <CardContent>
               <div className="text-4xl font-bold text-gray-900 dark:text-white mb-1">
-                0
+                {stats.totalScans}
               </div>
               <p className="text-sm text-gray-600 dark:text-gray-400">
                 All time
@@ -110,7 +132,7 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
             </CardHeader>
             <CardContent>
               <div className="text-4xl font-bold text-red-600 mb-1">
-                0
+                {stats.threatsDetected}
               </div>
               <p className="text-sm text-gray-600 dark:text-gray-400">
                 Phishing attempts detected
@@ -129,7 +151,7 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
             </CardHeader>
             <CardContent>
               <div className="text-4xl font-bold text-green-600 mb-1">
-                0
+                {stats.safeScans}
               </div>
               <p className="text-sm text-gray-600 dark:text-gray-400">
                 Verified as legitimate
@@ -159,7 +181,7 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
                 </CardHeader>
                 <CardContent>
                   <div className="text-4xl font-bold text-blue-600 mb-1">
-                    0
+                    {adminStats?.totalUsers || 0}
                   </div>
                   <p className="text-sm text-gray-600 dark:text-gray-400">
                     Registered accounts
@@ -197,7 +219,9 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
                 </CardHeader>
                 <CardContent>
                   <div className="text-4xl font-bold text-orange-600 mb-1">
-                    0%
+                    {adminStats && adminStats.totalScans > 0 
+                      ? Math.round((adminStats.threatsDetected / adminStats.totalScans) * 100)
+                      : 0}%
                   </div>
                   <p className="text-sm text-gray-600 dark:text-gray-400">
                     Threats caught

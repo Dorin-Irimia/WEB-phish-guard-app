@@ -270,6 +270,33 @@ export async function getAdminStats() {
     threatsDetected,
     safeScans: totalScans - threatsDetected,
     recentScans,
-    userScansStats, // Sinteza pe utilizator
+    userScansStats,
+  };
+}
+
+// USER: Get user dashboard stats
+export async function getUserStats() {
+  const session = await requireAuth();
+
+  const [totalScans, threatsDetected] = await Promise.all([
+    prisma.scan.count({ 
+      where: { 
+        userId: session.user.id,
+        isDeleted: false 
+      } 
+    }),
+    prisma.scan.count({ 
+      where: { 
+        userId: session.user.id,
+        isPhishing: true, 
+        isDeleted: false 
+      } 
+    }),
+  ]);
+
+  return {
+    totalScans,
+    threatsDetected,
+    safeScans: totalScans - threatsDetected,
   };
 }

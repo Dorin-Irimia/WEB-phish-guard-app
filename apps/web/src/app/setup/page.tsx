@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { checkAdminExists } from "@/app/actions/setup";
+import { getSession } from "@/lib/auth-helpers";
 import SetupAdminForm from "./setup-admin-form";
+import SetupLogoutPrompt from "./setup-logout-prompt";
 
 export default async function SetupPage() {
   // Check if admin already exists
@@ -9,6 +11,12 @@ export default async function SetupPage() {
   // If admin exists, redirect to login
   if (adminExists) {
     redirect("/login");
+  }
+
+  // If user is logged in, show logout prompt
+  const session = await getSession();
+  if (session?.user) {
+    return <SetupLogoutPrompt />;
   }
 
   return (

@@ -1,0 +1,41 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: phishguard-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: phishguard
+      POSTGRES_PASSWORD: phishguard_dev_password
+      POSTGRES_DB: phishguard
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U phishguard"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ML service disabled - using TensorFlow.js in browser instead
+  # ml-service:
+  #   build:
+  #     context: ./ml-service
+  #     dockerfile: Dockerfile
+  #   container_name: phishguard-ml-service
+  #   restart: unless-stopped
+  #   ports:
+  #     - "5000:5000"
+  #   volumes:
+  #     - ./ml-service/models:/app/models:ro
+  #   environment:
+  #     - PYTHONUNBUFFERED=1
+  #   healthcheck:
+  #     test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:5000/health')"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     start_period: 40s
+  #     retries: 3
+
+volumes:
+  postgres_data:
