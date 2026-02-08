@@ -1,10 +1,10 @@
 "use client";
 
-import { useTransition, useState } from "react";
+import { useTransition, useState, useMemo } from "react";
 import { toast } from "sonner";
 import { Button } from "./ui/button";
 import { upgradeOrganizationPlan } from "@/app/actions/organizations";
-import { TEAM_PLANS, type TeamPlanId } from "@/lib/subscription-plans";
+import { TEAM_PLANS, type TeamPlanId, canUpgrade, canDowngrade } from "@/lib/subscription-plans";
 
 type Props = {
   organizationId: string;
@@ -22,6 +22,13 @@ export default function UpgradePlanForm({ organizationId, currentPlan }: Props) 
   );
   const [pending, startTransition] = useTransition();
 
+  const label = useMemo(() => {
+    if (selectedPlan === currentPlan) return "Current plan";
+    if (canUpgrade(currentPlan as any, selectedPlan as any)) return "Upgrade";
+    if (canDowngrade(currentPlan as any, selectedPlan as any)) return "Downgrade";
+    return "Change plan";
+  }, [currentPlan, selectedPlan]);
+
   const handleUpgrade = () => {
     startTransition(async () => {
       try {
@@ -30,7 +37,7 @@ export default function UpgradePlanForm({ organizationId, currentPlan }: Props) 
           toast.error(res?.error || "Upgrade failed");
           return;
         }
-        toast.success(`Plan upgraded to ${selectedPlan.replace("team_", "").toUpperCase()}`);
+        toast.success(`Plan changed to ${selectedPlan.replace("team_", "").toUpperCase()}`);
       } catch (err: any) {
         toast.error(err?.message || "Upgrade failed");
         console.error(err);
@@ -52,8 +59,8 @@ export default function UpgradePlanForm({ organizationId, currentPlan }: Props) 
           </option>
         ))}
       </select>
-      <Button onClick={handleUpgrade} disabled={pending}>
-        {pending ? "Upgrading..." : "Upgrade Plan"}
+      <Button onClick={handleUpgrade} disabled={pending || selectedPlan === currentPlan}>
+        {pending ? "Saving..." : label}
       </Button>
     </div>
   );
